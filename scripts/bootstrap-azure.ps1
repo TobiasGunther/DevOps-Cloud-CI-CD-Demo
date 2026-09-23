@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param(
     [string]$Workload      = 'devops-demo',
-    [string]$Location      = 'westeurope',
+    [string]$Location      = 'norwayeast',
     [string]$GithubOwner   = 'TobiasGunther',
     [string]$GithubRepo    = 'DevOps-Cloud-CI-CD-Demo',
     [string]$GithubBranch  = 'main'

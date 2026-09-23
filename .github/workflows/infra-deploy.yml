@@ -34,7 +34,7 @@ permissions:
   id-token: write # Required to request the OIDC token. Without it, azure/login cannot work.
 
 env:
-  LOCATION: westeurope
+  LOCATION: norwayeast
   PARAM_FILE: infra/main.dev.bicepparam
 
 jobs:

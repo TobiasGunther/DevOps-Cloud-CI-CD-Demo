@@ -26,7 +26,7 @@ set -euo pipefail
 # ---- settings ---------------------------------------------------------------
 WORKLOAD="${WORKLOAD:-devops-demo}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
-LOCATION="${LOCATION:-westeurope}"
+LOCATION="${LOCATION:-norwayeast}"
 GITHUB_OWNER="${GITHUB_OWNER:-TobiasGunther}"
 GITHUB_REPO="${GITHUB_REPO:-DevOps-Cloud-CI-CD-Demo}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"

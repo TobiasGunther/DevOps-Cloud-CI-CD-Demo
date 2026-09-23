@@ -21,7 +21,7 @@ param workload string = 'devops-demo'
 param environmentName string = 'dev'
 
 @description('Azure region. Check Free tier availability with: az appservice list-locations --sku F1')
-param location string = 'westeurope'
+param location string = 'norwayeast'
 
 @description('App Service plan size. F1 is free but capped at 60 CPU-minutes/day per region per subscription; if the cap is hit the app returns HTTP 403 until midnight UTC. B1 removes the cap for about USD 13/month.')
 @allowed(['F1', 'B1'])
