@@ -59,6 +59,13 @@ on_error() {
 }
 trap 'on_error ${LINENO}' ERR
 
+# Git Bash on Windows rewrites arguments that look like Unix absolute paths, so
+# "--scope /subscriptions/<guid>" arrives as "C:/Program Files/Git/subscriptions/<guid>"
+# and ARM rejects it with a baffling "MissingSubscription" that reads like a
+# permissions problem. These variables are ignored on Linux and macOS.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+
 # ---- settings ---------------------------------------------------------------
 WORKLOAD="${WORKLOAD:-devops-demo}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
@@ -81,19 +88,61 @@ SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 SUBSCRIPTION_NAME=$(az account show --query name -o tsv)
 
+# "Use a sandbox" is easy to agree with and easy to skip past. Show what is actually
+# in the subscription, because a real sandbox is nearly empty and anything else is
+# somebody's working environment.
+RG_COUNT=$(az group list --query "length(@)" -o tsv 2>/dev/null || echo "?")
+RESOURCE_COUNT=$(az resource list --query "length(@)" -o tsv 2>/dev/null || echo "?")
+
+RISK=""
+case "${SUBSCRIPTION_NAME}" in
+  *prod*|*Prod*|*PROD*) RISK="its name contains \"prod\"" ;;
+esac
+if [ -z "${RISK}" ] && [ "${RESOURCE_COUNT}" != "?" ] && [ "${RESOURCE_COUNT}" -gt 20 ]; then
+  RISK="it already holds ${RESOURCE_COUNT} resources, so it is not an empty sandbox"
+fi
+
 cat <<EOF
 
   Subscription : ${SUBSCRIPTION_NAME}
                  ${SUBSCRIPTION_ID}
   Tenant       : ${TENANT_ID}
+  Contains     : ${RESOURCE_COUNT} resources in ${RG_COUNT} resource groups
   Repository   : ${GITHUB_OWNER}/${GITHUB_REPO}  (branch: ${GITHUB_BRANCH})
   Identity     : ${IDENTITY_NAME} in ${IDENTITY_RG} (${LOCATION})
 
   This grants the identity Contributor and Role Based Access Control Administrator
   over the WHOLE subscription, because it has to create resource groups and role
-  assignments. Use a sandbox subscription, never a shared or production one.
+  assignments. Anyone able to merge to ${GITHUB_BRANCH} then controls this
+  subscription, and Role Based Access Control Administrator lets the identity grant
+  any role to anyone. Use a sandbox, never a shared or production subscription.
 
 EOF
+
+if [ -n "${RISK}" ]; then
+  cat <<EOF
+  ----------------------------------------------------------------------
+  REFUSING TO CONTINUE BY DEFAULT: this does not look like a sandbox,
+  because ${RISK}.
+
+  If you are certain, rerun with:
+
+      I_KNOW_THIS_IS_NOT_A_SANDBOX=yes ./scripts/bootstrap-azure.sh
+
+  Otherwise switch subscription first:
+
+      az account set --subscription "<sandbox>"
+  ----------------------------------------------------------------------
+
+EOF
+  if [ "${I_KNOW_THIS_IS_NOT_A_SANDBOX:-}" != "yes" ]; then
+    echo "Aborted."
+    exit 1
+  fi
+  echo "  Override set. Continuing against a non-sandbox subscription."
+  echo
+fi
+
 read -r -p "Continue? [y/N] " reply
 [ "${reply}" = "y" ] || [ "${reply}" = "Y" ] || { echo "Aborted."; exit 0; }
 

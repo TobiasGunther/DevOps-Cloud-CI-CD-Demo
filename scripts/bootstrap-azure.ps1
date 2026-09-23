@@ -83,19 +83,61 @@ if ($LASTEXITCODE -ne 0 -or -not $account.id) {
 $subscriptionId  = $account.id
 $tenantId        = $account.tenantId
 
+# "Use a sandbox" is easy to agree with and easy to skip past. Show what is actually
+# in the subscription, because a real sandbox is nearly empty and anything else is
+# somebody's working environment.
+$rgCount       = (az group list --query "length(@)" -o tsv 2>$null)
+$resourceCount = (az resource list --query "length(@)" -o tsv 2>$null)
+
+$risk = ''
+if ($account.name -match 'prod') {
+    $risk = 'its name contains "prod"'
+}
+elseif (($resourceCount -as [int]) -gt 20) {
+    $risk = "it already holds $resourceCount resources, so it is not an empty sandbox"
+}
+
 Write-Host @"
 
   Subscription : $($account.name)
                  $subscriptionId
   Tenant       : $tenantId
+  Contains     : $resourceCount resources in $rgCount resource groups
   Repository   : $GithubOwner/$GithubRepo  (branch: $GithubBranch)
   Identity     : $identityName in $identityRg ($Location)
 
   This grants the identity Contributor and Role Based Access Control Administrator
   over the WHOLE subscription, because it has to create resource groups and role
-  assignments. Use a sandbox subscription, never a shared or production one.
+  assignments. Anyone able to merge to $GithubBranch then controls this
+  subscription, and Role Based Access Control Administrator lets the identity grant
+  any role to anyone. Use a sandbox, never a shared or production subscription.
 
 "@
+
+if ($risk) {
+    Write-Host @"
+  ----------------------------------------------------------------------
+  REFUSING TO CONTINUE BY DEFAULT: this does not look like a sandbox,
+  because $risk.
+
+  If you are certain, rerun with:
+
+      `$env:I_KNOW_THIS_IS_NOT_A_SANDBOX = 'yes'
+      ./scripts/bootstrap-azure.ps1
+
+  Otherwise switch subscription first:
+
+      az account set --subscription "<sandbox>"
+  ----------------------------------------------------------------------
+
+"@
+    if ($env:I_KNOW_THIS_IS_NOT_A_SANDBOX -ne 'yes') {
+        Write-Host 'Aborted.'
+        exit 1
+    }
+    Write-Host '  Override set. Continuing against a non-sandbox subscription.'
+    Write-Host ''
+}
 
 if ((Read-Host 'Continue? [y/N]') -notin @('y', 'Y')) {
     Write-Host 'Aborted.'
