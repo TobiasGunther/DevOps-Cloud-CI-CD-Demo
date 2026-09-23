@@ -1,11 +1,13 @@
 # ---------------------------------------------------------------------------
 # Infrastructure as code -> Azure.
 #
-# This is the privileged pipeline. It creates the resource group itself, so its
-# identity needs Contributor AND Role Based Access Control Administrator at
-# subscription scope. Contrast that with app-deploy-oidc.yml, whose identity holds
-# one role on one resource group. Two pipelines, two identities, two scopes -
-# that contrast is the point, not an accident.
+# The privileged pipeline - but only within one resource group. Its identity holds
+# Contributor AND Role Based Access Control Administrator there, because it creates
+# resources and the role assignment for the app-deploy identity.
+#
+# Contrast it with app-deploy-oidc.yml, whose identity holds a single narrow role on
+# that same resource group. Two pipelines, two identities, very different power,
+# and nothing subscription-wide anywhere.
 #
 # On a pull request it only runs what-if: you see the diff before anyone approves it.
 # Setup: docs/00-azure-setup.md
@@ -34,7 +36,9 @@ permissions:
   id-token: write # Required to request the OIDC token. Without it, azure/login cannot work.
 
 env:
-  LOCATION: norwayeast
+  # The resource group is a prerequisite created once by hand, not by this pipeline:
+  # see docs/00-azure-setup.md. Deploying into it needs no subscription-level rights.
+  RESOURCE_GROUP: rg-devops-demo-dev
   PARAM_FILE: infra/main.dev.bicepparam
 
 jobs:
@@ -57,8 +61,8 @@ jobs:
 
       - name: Show what would change
         run: |
-          az deployment sub what-if \
-            --location "$LOCATION" \
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
             --parameters "$PARAM_FILE" \
             --name "whatif-${{ github.run_id }}" \
             | tee whatif.txt
@@ -86,8 +90,8 @@ jobs:
       - name: Deploy
         id: deploy
         run: |
-          outputs=$(az deployment sub create \
-            --location "$LOCATION" \
+          outputs=$(az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
             --parameters "$PARAM_FILE" \
             --name "infra-${{ github.run_id }}" \
             --query properties.outputs -o json)

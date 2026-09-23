@@ -2,7 +2,11 @@ using './main.bicep'
 
 param workload = 'devops-demo'
 param environmentName = 'dev'
-param location = 'norwayeast'
+
+// No location here on purpose: it defaults to the resource group's own location, so
+// the resources cannot end up in a different region from the group that holds them.
+// Override only if you deliberately want them apart.
+// param location = 'norwayeast'
 
 // Free. Capped at 60 CPU-minutes per day, per region, per subscription - and when the cap
 // is reached the app is STOPPED and serves HTTP 403 until midnight UTC. There is no way to

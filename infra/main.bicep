@@ -1,15 +1,19 @@
 // -----------------------------------------------------------------------------
-// Demo: "Fra kode til produksjon" - a resource group, a web app, and the identity
-// that is allowed to deploy to it.
+// Demo: "Fra kode til produksjon" - a web app and the identity allowed to deploy
+// to it, all inside one resource group.
 //
-// Deployed at SUBSCRIPTION scope, because this file creates the resource group
-// itself. That is a deliberate teaching point: the pipeline that creates resource
-// groups must be allowed to create resource groups, so the IaC identity is
-// necessarily more privileged than the app-deploy identity created further down.
-// Compare the two role assignments in docs/00-azure-setup.md.
+// Deployed at RESOURCE GROUP scope. The resource group itself is a prerequisite,
+// created once by hand, because this demo runs in a subscription where nobody
+// should hold subscription-wide rights just to host a lecture demo.
+//
+// The payoff is that nothing here is subscription-scoped. Every role assignment
+// lands on this one resource group, which is exactly the argument the lecture
+// makes: scope the role to the resource group, not to the subscription. The two
+// identities still differ sharply in how much they can do - see
+// docs/00-azure-setup.md for the comparison.
 // -----------------------------------------------------------------------------
 
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @description('Short name for the workload. Used as a prefix for every resource name.')
 @minLength(3)
@@ -20,8 +24,11 @@ param workload string = 'devops-demo'
 @allowed(['dev', 'test'])
 param environmentName string = 'dev'
 
-@description('Azure region. Check Free tier availability with: az appservice list-locations --sku F1')
-param location string = 'norwayeast'
+@description('''
+Azure region. Defaults to the resource group's own location, which is almost always what
+you want. Check Free tier availability with: az appservice list-locations --sku F1
+''')
+param location string = resourceGroup().location
 
 @description('App Service plan size. F1 is free but capped at 60 CPU-minutes/day per region per subscription; if the cap is hit the app returns HTTP 403 until midnight UTC. B1 removes the cap for about USD 13/month.')
 @allowed(['F1', 'B1'])
@@ -47,8 +54,6 @@ param enableScmBasicAuth bool = true
 @description('Deploy Log Analytics and Application Insights for the observability part of the portal tour.')
 param enableMonitoring bool = true
 
-var resourceGroupName = 'rg-${workload}-${environmentName}'
-
 var tags = {
   workload: workload
   environment: environmentName
@@ -56,14 +61,7 @@ var tags = {
   purpose: 'Temporary CI/CD demo'
 }
 
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = {
-  name: resourceGroupName
-  location: location
-  tags: tags
-}
-
 module monitoring 'modules/monitoring.bicep' = if (enableMonitoring) {
-  scope: resourceGroup
   name: 'monitoring'
   params: {
     workload: workload
@@ -74,7 +72,6 @@ module monitoring 'modules/monitoring.bicep' = if (enableMonitoring) {
 }
 
 module webApp 'modules/webapp.bicep' = {
-  scope: resourceGroup
   name: 'webapp'
   params: {
     workload: workload
@@ -88,7 +85,6 @@ module webApp 'modules/webapp.bicep' = {
 }
 
 module deployIdentity 'modules/deploy-identity.bicep' = {
-  scope: resourceGroup
   name: 'deploy-identity'
   params: {
     workload: workload
@@ -102,7 +98,7 @@ module deployIdentity 'modules/deploy-identity.bicep' = {
 }
 
 @description('Name of the resource group everything landed in.')
-output resourceGroupName string = resourceGroup.name
+output resourceGroupName string = resourceGroup().name
 
 @description('Name of the web app, needed by both deploy workflows.')
 output webAppName string = webApp.outputs.webAppName
