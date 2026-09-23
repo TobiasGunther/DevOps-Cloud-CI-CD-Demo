@@ -1,0 +1,113 @@
+# ---------------------------------------------------------------------------
+# Infrastructure as code -> Azure.
+#
+# This is the privileged pipeline. It creates the resource group itself, so its
+# identity needs Contributor AND Role Based Access Control Administrator at
+# subscription scope. Contrast that with app-deploy-oidc.yml, whose identity holds
+# one role on one resource group. Two pipelines, two identities, two scopes -
+# that contrast is the point, not an accident.
+#
+# On a pull request it only runs what-if: you see the diff before anyone approves it.
+# Setup: docs/00-azure-setup.md
+# ---------------------------------------------------------------------------
+name: Infra - deploy to Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-deploy.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: infra-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Required to request the OIDC token. Without it, azure/login cannot work.
+
+env:
+  LOCATION: westeurope
+  PARAM_FILE: infra/main.dev.bicepparam
+
+jobs:
+  validate:
+    name: What-if (preview changes)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sign in to Azure with a short-lived token
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_IAC_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Lint the Bicep
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+
+      - name: Show what would change
+        run: |
+          az deployment sub what-if \
+            --location "$LOCATION" \
+            --parameters "$PARAM_FILE" \
+            --name "whatif-${{ github.run_id }}" \
+            | tee whatif.txt
+          {
+            echo '## Infrastructure what-if'
+            echo '```'
+            cat whatif.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy infrastructure
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sign in to Azure with a short-lived token
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_IAC_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy
+        id: deploy
+        run: |
+          outputs=$(az deployment sub create \
+            --location "$LOCATION" \
+            --parameters "$PARAM_FILE" \
+            --name "infra-${{ github.run_id }}" \
+            --query properties.outputs -o json)
+
+          echo "$outputs" | jq -r 'to_entries[] | "\(.key)=\(.value.value)"' >> "$GITHUB_OUTPUT"
+          echo "$outputs" | jq -r 'to_entries[] | "\(.key)=\(.value.value)"'
+
+      - name: Report
+        run: |
+          {
+            echo '## Infrastructure deployed'
+            echo ''
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Resource group | \`${{ steps.deploy.outputs.resourceGroupName }}\` |"
+            echo "| Web app | \`${{ steps.deploy.outputs.webAppName }}\` |"
+            echo "| URL | ${{ steps.deploy.outputs.webAppUrl }} |"
+            echo "| SCM basic auth (the insecure path) | \`${{ steps.deploy.outputs.scmBasicAuthEnabled }}\` |"
+            echo "| App-deploy identity client ID | \`${{ steps.deploy.outputs.deployIdentityClientId }}\` |"
+            echo ''
+            echo 'Copy the web app name into the repository variable `AZURE_WEBAPP_NAME`,'
+            echo 'and the client ID into `AZURE_DEPLOY_CLIENT_ID`. Neither is a secret.'
+          } >> "$GITHUB_STEP_SUMMARY"

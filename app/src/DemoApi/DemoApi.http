@@ -1,0 +1,33 @@
+# Quick requests for the demo. Works in Visual Studio, VS Code (REST Client) and Rider.
+# Switch @host between local and the deployed app to show the same requests hitting both.
+
+@host = http://localhost:5292
+# @host = https://app-usndevops-dev-xxxxx.azurewebsites.net
+
+### What is running right now? Version and commit come from the artifact,
+### environment and message come from App Service configuration.
+GET {{host}}/api/info
+Accept: application/json
+
+### Greeting, Norwegian (the default)
+GET {{host}}/api/greet/Martin
+Accept: application/json
+
+### Greeting, English
+GET {{host}}/api/greet/Tobias?language=en
+Accept: application/json
+
+### Rejected: unsupported language -> 400
+GET {{host}}/api/greet/Martin?language=fr
+Accept: application/json
+
+### Rejected: name too long -> 400
+GET {{host}}/api/greet/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Accept: application/json
+
+### The six principles from the lecture
+GET {{host}}/api/principles
+Accept: application/json
+
+### Health, used by the deploy smoke test and the keep-warm schedule
+GET {{host}}/health

@@ -1,0 +1,99 @@
+# ---------------------------------------------------------------------------
+# Demo 1, "Den røde testen".
+#
+# This is the workflow that turns a pull request red. Nothing here talks to Azure
+# and nothing here needs a secret - it only builds the code and runs the tests.
+# Make this job a required status check on main (see docs/01-github-setup.md) and
+# the merge button stops being available on its own, with no discussion needed.
+# ---------------------------------------------------------------------------
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A pull request that gets a new push should cancel the run that is already going,
+# rather than queue behind it. Shorter feedback loop, fewer wasted minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore app/DemoApi.slnx
+
+      - name: Build
+        run: dotnet build app/DemoApi.slnx --configuration Release --no-restore
+
+      - name: Run tests
+        run: |
+          dotnet test app/DemoApi.slnx \
+            --configuration Release \
+            --no-build \
+            --logger 'trx;LogFileName=test-results.trx' \
+            --logger 'console;verbosity=normal' \
+            --results-directory TestResults
+
+      # Runs even when the tests fail - that is exactly when you want to read it.
+      - name: Summarise test results
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, xml.etree.ElementTree as ET
+
+          ns = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
+          files = glob.glob('TestResults/**/*.trx', recursive=True)
+          if not files:
+              print('No test results were produced.')
+              raise SystemExit
+
+          total = passed = failed = 0
+          failures = []
+          for path in files:
+              root = ET.parse(path).getroot()
+              counters = root.find('t:ResultSummary/t:Counters', ns)
+              if counters is not None:
+                  total += int(counters.get('total', 0))
+                  passed += int(counters.get('passed', 0))
+                  failed += int(counters.get('failed', 0))
+              for result in root.findall('.//t:UnitTestResult', ns):
+                  if result.get('outcome') == 'Failed':
+                      message = result.find('.//t:Message', ns)
+                      failures.append((result.get('testName', '?'),
+                                       (message.text or '').strip() if message is not None else ''))
+
+          icon = '❌' if failed else '✅'
+          print(f'## {icon} {passed}/{total} tests passed\n')
+          if failures:
+              print('| Failing test | Message |')
+              print('| --- | --- |')
+              for name, message in failures:
+                  print(f"| `{name}` | {message.splitlines()[0][:160] if message else ''} |")
+          PY
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          retention-days: 7

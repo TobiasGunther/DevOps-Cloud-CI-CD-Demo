@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Free tier insurance.
+#
+# The F1 App Service plan has no "Always On", so the app unloads after roughly 20
+# minutes without traffic and the next visitor pays a cold start of 20-30 seconds.
+# That is a bad thing to discover in front of a lecture hall.
+#
+# This pings /health on a schedule during working hours so the app is already warm.
+# The health endpoint does almost no work, so the cost against the 60 CPU-minutes/day
+# free quota is negligible.
+#
+# Note: GitHub disables scheduled workflows in repositories with no activity for 60
+# days. Check the Actions tab the day before the lecture.
+# ---------------------------------------------------------------------------
+name: Keep the free tier app warm
+
+on:
+  schedule:
+    - cron: '*/10 5-16 * * 1-5' # every 10 minutes, 05:00-16:59 UTC, weekdays
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping /health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the app
+        run: |
+          if [ -z "${{ vars.AZURE_WEBAPP_NAME }}" ]; then
+            echo "AZURE_WEBAPP_NAME is not set yet - nothing to warm."
+            exit 0
+          fi
+          url="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net/health"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$url" || echo 000)
+          echo "GET $url -> $code"
+          case "$code" in
+            200) echo "App is warm." ;;
+            403) echo "::warning::HTTP 403 - the F1 daily CPU quota is likely exhausted. It resets at midnight UTC. To recover now, set appServicePlanSku to B1 in infra/main.dev.bicepparam and rerun the infra workflow." ;;
+            *)   echo "::warning::Unexpected status $code." ;;
+          esac
