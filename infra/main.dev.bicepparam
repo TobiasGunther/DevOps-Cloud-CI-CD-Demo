@@ -2,7 +2,7 @@ using './main.bicep'
 
 param workload = 'devops-demo'
 param environmentName = 'dev'
-param location = 'westeurope'
+param location = 'norwayeast'
 
 // Free. Capped at 60 CPU-minutes per day, per region, per subscription - and when the cap
 // is reached the app is STOPPED and serves HTTP 403 until midnight UTC. There is no way to
