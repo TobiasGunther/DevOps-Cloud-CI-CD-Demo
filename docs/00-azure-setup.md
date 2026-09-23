@@ -46,8 +46,22 @@ deleted along with everything else — which an app registration does not.
 
 ## Step 1 — pick a subscription, and sign in with MFA
 
-Use a sandbox. The bootstrap grants subscription-wide Contributor, which does not belong
-in a shared or customer subscription.
+Use a sandbox. The bootstrap grants subscription-wide Contributor **and** Role Based
+Access Control Administrator to an identity federated to a GitHub repository. In a shared
+or customer subscription that means anyone who can merge to `main` controls it, and the
+identity can hand any role to anyone.
+
+The script enforces this rather than trusting the warning: it prints how many resources the
+subscription already holds and refuses outright when the name contains `prod` or more than
+20 resources are present. Override only if you are certain:
+
+```bash
+I_KNOW_THIS_IS_NOT_A_SANDBOX=yes ./scripts/bootstrap-azure.sh
+```
+
+If you are on Windows, run the script from Git Bash, WSL or Cloud Shell — it sets
+`MSYS_NO_PATHCONV` internally, because Git Bash otherwise rewrites `/subscriptions/<guid>`
+into a Windows path and ARM answers with a misleading `MissingSubscription`.
 
 ```bash
 az login --scope https://management.azure.com//.default
