@@ -1,0 +1,22 @@
+# Line endings are normalised here rather than left to each machine's core.autocrlf,
+# so a clone behaves the same on Windows, macOS, Linux and the CI runner.
+* text=auto
+
+# Shell scripts must be LF everywhere. A CRLF shebang makes bash fail with
+# "bad interpreter: /bin/bash^M", which is a miserable thing to hit live.
+*.sh text eol=lf
+
+# Read by Linux runners and by Azure, never by Windows-only tooling.
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.bicep      text eol=lf
+*.bicepparam text eol=lf
+
+# PowerShell copes with either; CRLF matches the platform it usually runs on.
+*.ps1 text eol=crlf
+
+# Leave binaries alone.
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.pptx binary
