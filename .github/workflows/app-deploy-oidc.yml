@@ -1,0 +1,124 @@
+# ---------------------------------------------------------------------------
+# Demo 2, the secure half: short-lived federated identity.
+#
+# Same app, same environment, same build steps as app-deploy-publish-profile.yml.
+# The only difference is the deploy job - and what is missing from it.
+#
+# There is no secret. Not a weaker secret, none:
+#   - GitHub signs a token describing this run (repo, branch, workflow)
+#   - Entra ID checks it against the federated credential in infra/modules/
+#     deploy-identity.bicep and, if the subject matches exactly, issues an
+#     access token that expires in minutes
+#   - that token carries one role, Website Contributor, on one resource group
+#
+# The three values below are IDs, not credentials. They identify the identity;
+# they do not authenticate as it. They are stored as repository *variables*, so the
+# Secrets page for this workflow is genuinely empty. Nothing here can leak, because
+# there is nothing here to leak.
+#
+# The same mechanism exists at AWS (IAM OIDC) and Google Cloud (Workload Identity
+# Federation) under different names.
+# ---------------------------------------------------------------------------
+name: App - deploy with federated identity (secure)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/app-deploy-oidc.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: app-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Lets the job request a signed token proving who it is.
+
+jobs:
+  build:
+    name: Build once
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: |
+          dotnet publish app/src/DemoApi/DemoApi.csproj \
+            --configuration Release \
+            --output ./publish \
+            -p:Version=1.0.${{ github.run_number }} \
+            -p:InformationalVersion=1.0.${{ github.run_number }}+${{ github.sha }}
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-oidc-${{ github.run_number }}
+          path: ./publish
+          retention-days: 7
+
+  deploy:
+    name: Deploy with a short-lived token
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ steps.deploy.outputs.webapp-url }}
+    steps:
+      - name: Download the artifact built above
+        uses: actions/download-artifact@v8
+        with:
+          name: app-oidc-${{ github.run_number }}
+          path: ./publish
+
+      - name: Sign in to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Show what this identity is allowed to do
+        run: |
+          echo "Signed in as the app-deploy managed identity."
+          az role assignment list \
+            --assignee "${{ vars.AZURE_DEPLOY_CLIENT_ID }}" \
+            --all \
+            --query "[].{role:roleDefinitionName, scope:scope}" -o table
+
+      - name: Deploy to App Service
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ./publish
+          # No publish-profile input. Authentication came from the step above.
+
+      - name: Smoke test the deployed app
+        run: |
+          url="${{ steps.deploy.outputs.webapp-url }}"
+          echo "Waiting for $url to serve the new build..."
+          for attempt in $(seq 1 20); do
+            if body=$(curl -fsS --max-time 20 "$url/api/info"); then
+              echo "$body" | jq .
+              deployed=$(echo "$body" | jq -r .commit)
+              if [ "$deployed" = "${{ github.sha }}" ]; then
+                echo "Live commit matches this run."
+                echo "### Deployed with federated identity, no stored secret: [$url]($url)" >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              echo "Attempt $attempt: live commit is $deployed, waiting..."
+            else
+              echo "Attempt $attempt: app not answering yet."
+            fi
+            sleep 10
+          done
+          echo "::error::The app never reported the expected commit."
+          exit 1

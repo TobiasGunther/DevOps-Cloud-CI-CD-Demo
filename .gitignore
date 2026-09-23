@@ -1,0 +1,33 @@
+# Build output
+bin/
+obj/
+publish/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+# Test output
+TestResults/
+*.trx
+coverage*.xml
+*.coverage
+
+# Bicep compilation output - the .bicep files are the source of truth
+infra/**/*.json
+!infra/**/*.bicepparam
+
+# Local settings that must never reach the repository
+appsettings.Local.json
+appsettings.*.local.json
+*.publishsettings
+*.pubxml
+.env
+.env.*
+
+# Editors and OS
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
