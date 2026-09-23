@@ -80,8 +80,7 @@ Say out loud that AWS and Google Cloud have the same four things under different
 
 ```bash
 gh secret delete AZURE_WEBAPP_PUBLISH_PROFILE
-az group delete --name rg-devops-demo-dev      --yes --no-wait
-az group delete --name rg-devops-demo-identity --yes --no-wait
+az group delete --name rg-devops-demo-dev --yes --no-wait
 ```
 
 Leaving the resource group running is exactly the mistake slide 25 warns about. Delete it

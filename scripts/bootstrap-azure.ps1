@@ -7,26 +7,35 @@
     only to break the chicken-and-egg problem: something has to create the first
     identity, and it cannot be the pipeline that needs it.
 
+    Everything lives in ONE resource group, which you create beforehand:
+
+        az group create --name rg-devops-demo-dev --location norwayeast
+
+    and on which you need Owner, or Contributor plus User Access Administrator.
+    Nothing here touches the subscription, so this works in a subscription where you
+    are trusted with a single resource group and nothing more.
+
     It creates a user-assigned managed identity rather than an Entra app registration.
     An app registration lives in the Entra directory and many tenants forbid ordinary
-    users from creating one; a managed identity is an ordinary Azure resource, so Owner
-    on a subscription is enough. Both support the same federated credentials.
-
-    Requires Owner on the target subscription (or Contributor + RBAC Administrator).
+    users from creating one; a managed identity is an ordinary Azure resource, so
+    rights on a resource group are enough. Both support the same federated credentials.
 
 .EXAMPLE
-    ./scripts/bootstrap-azure.ps1 -GithubOwner TobiasGunther -GithubRepo DevOps-Cloud-CI-CD-Demo
+    ./scripts/bootstrap-azure.ps1
 #>
 [CmdletBinding()]
 param(
     [string]$Workload      = 'devops-demo',
-    [string]$Location      = 'norwayeast',
+    [string]$Environment   = 'dev',
+    [string]$ResourceGroup,
     [string]$GithubOwner   = 'TobiasGunther',
     [string]$GithubRepo    = 'DevOps-Cloud-CI-CD-Demo',
     [string]$GithubBranch  = 'main'
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $ResourceGroup) { $ResourceGroup = "rg-$Workload-$Environment" }
 
 # Without this, a failure ends the script instantly. If it was started by
 # right-click "Run with PowerShell", the window closes with it and the error is gone
@@ -39,17 +48,16 @@ trap {
     Write-Host '  Two failures are common here:'
     Write-Host ''
     Write-Host '  RequestDisallowedByPolicy, mentioning multi-factor authentication'
-    Write-Host '      Your Azure token was issued without MFA, and this tenant denies'
+    Write-Host '      Your Azure token was issued without MFA, and some tenants deny'
     Write-Host '      resource writes from such tokens. Sign in again and rerun:'
     Write-Host ''
     Write-Host '          az logout'
     Write-Host '          az login --scope https://management.azure.com//.default'
     Write-Host ''
-    Write-Host '  AuthorizationFailed'
-    Write-Host '      The account lacks Owner, or Contributor plus Role Based Access'
-    Write-Host '      Control Administrator, on this subscription. Check with:'
-    Write-Host ''
-    Write-Host '          az account show --output table'
+    Write-Host '  AuthorizationFailed on a role assignment'
+    Write-Host '      You can create resources in the group but not grant roles in it.'
+    Write-Host '      Ask for Owner, or User Access Administrator alongside Contributor,'
+    Write-Host "      on $ResourceGroup."
     Write-Host ''
     Write-Host '  Nothing is left half-built: rerunning is safe, every step is idempotent.'
     Write-Host '  --------------------------------------------------------------------'
@@ -61,7 +69,6 @@ trap {
     exit 1
 }
 
-$identityRg   = "rg-$Workload-identity"
 $identityName = "id-$Workload-iac"
 
 # Verified against learn.microsoft.com/azure/role-based-access-control/built-in-roles
@@ -80,63 +87,70 @@ if ($LASTEXITCODE -ne 0 -or -not $account.id) {
     throw 'Not signed in to Azure. Run: az login --scope https://management.azure.com//.default'
 }
 
-$subscriptionId  = $account.id
-$tenantId        = $account.tenantId
+$subscriptionId = $account.id
+$tenantId       = $account.tenantId
+$rgScope        = "/subscriptions/$subscriptionId/resourceGroups/$ResourceGroup"
 
-# "Use a sandbox" is easy to agree with and easy to skip past. Show what is actually
-# in the subscription, because a real sandbox is nearly empty and anything else is
-# somebody's working environment.
-$rgCount       = (az group list --query "length(@)" -o tsv 2>$null)
-$resourceCount = (az resource list --query "length(@)" -o tsv 2>$null)
+# The resource group is a prerequisite, not something this script creates. Creating
+# one needs subscription rights, which is precisely what this design avoids needing.
+$location = az group show --name $ResourceGroup --query location -o tsv 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $location) {
+    Write-Host @"
 
-$risk = ''
-if ($account.name -match 'prod') {
-    $risk = 'its name contains "prod"'
+  Resource group "$ResourceGroup" does not exist in $($account.name).
+
+  Create it, or ask whoever administers the subscription to:
+
+      az group create --name $ResourceGroup --location norwayeast
+
+  You then need Owner on it, or Contributor plus User Access Administrator.
+
+"@
+    exit 1
 }
-elseif (($resourceCount -as [int]) -gt 20) {
-    $risk = "it already holds $resourceCount resources, so it is not an empty sandbox"
-}
+
+# This group is about to hold an identity a public repository can deploy with. If it
+# already contains somebody else work, that is worth stopping over.
+$existing = az resource list --resource-group $ResourceGroup --query "length(@)" -o tsv 2>$null
+if (-not $existing) { $existing = 0 }
 
 Write-Host @"
 
-  Subscription : $($account.name)
-                 $subscriptionId
-  Tenant       : $tenantId
-  Contains     : $resourceCount resources in $rgCount resource groups
-  Repository   : $GithubOwner/$GithubRepo  (branch: $GithubBranch)
-  Identity     : $identityName in $identityRg ($Location)
+  Subscription   : $($account.name)
+                   $subscriptionId
+  Tenant         : $tenantId
+  Resource group : $ResourceGroup ($location), holding $existing resources
+  Repository     : $GithubOwner/$GithubRepo  (branch: $GithubBranch)
+  Identity       : $identityName
 
-  This grants the identity Contributor and Role Based Access Control Administrator
-  over the WHOLE subscription, because it has to create resource groups and role
-  assignments. Anyone able to merge to $GithubBranch then controls this
-  subscription, and Role Based Access Control Administrator lets the identity grant
-  any role to anyone. Use a sandbox, never a shared or production subscription.
+  The identity will be granted Contributor and Role Based Access Control
+  Administrator ON THIS RESOURCE GROUP ONLY. Inside the group it can create, change
+  and delete anything, and grant roles. Outside it, it can see nothing at all.
+
+  Anyone who can merge to $GithubBranch in that repository can use it, so the
+  group should hold nothing you would mind losing.
 
 "@
 
-if ($risk) {
+if (($existing -as [int]) -gt 0 -and $env:I_KNOW_THE_GROUP_IS_NOT_EMPTY -ne 'yes') {
     Write-Host @"
   ----------------------------------------------------------------------
-  REFUSING TO CONTINUE BY DEFAULT: this does not look like a sandbox,
-  because $risk.
+  REFUSING TO CONTINUE: $ResourceGroup already holds $existing
+  resources. A group dedicated to this demo should start empty.
 
-  If you are certain, rerun with:
+  See what is in it:
 
-      `$env:I_KNOW_THIS_IS_NOT_A_SANDBOX = 'yes'
+      az resource list --resource-group $ResourceGroup -o table
+
+  Use an empty group, or override if those resources are yours:
+
+      `$env:I_KNOW_THE_GROUP_IS_NOT_EMPTY = 'yes'
       ./scripts/bootstrap-azure.ps1
-
-  Otherwise switch subscription first:
-
-      az account set --subscription "<sandbox>"
   ----------------------------------------------------------------------
 
 "@
-    if ($env:I_KNOW_THIS_IS_NOT_A_SANDBOX -ne 'yes') {
-        Write-Host 'Aborted.'
-        exit 1
-    }
-    Write-Host '  Override set. Continuing against a non-sandbox subscription.'
-    Write-Host ''
+    Write-Host 'Aborted.'
+    exit 1
 }
 
 if ((Read-Host 'Continue? [y/N]') -notin @('y', 'Y')) {
@@ -144,15 +158,12 @@ if ((Read-Host 'Continue? [y/N]') -notin @('y', 'Y')) {
     return
 }
 
-Write-Host "==> Resource group $identityRg"
-az group create --name $identityRg --location $Location `
+Write-Host "==> Managed identity $identityName"
+az identity create --name $identityName --resource-group $ResourceGroup --location $location `
     --tags workload=$Workload purpose='Temporary CI/CD demo' managedBy='bootstrap script' `
     --output none
 
-Write-Host "==> Managed identity $identityName"
-az identity create --name $identityName --resource-group $identityRg --location $Location --output none
-
-$identity    = az identity show --name $identityName --resource-group $identityRg | ConvertFrom-Json
+$identity    = az identity show --name $identityName --resource-group $ResourceGroup | ConvertFrom-Json
 $clientId    = $identity.clientId
 $principalId = $identity.principalId
 
@@ -167,7 +178,7 @@ function Add-FederatedCredential {
     az identity federated-credential create `
         --name $Name `
         --identity-name $identityName `
-        --resource-group $identityRg `
+        --resource-group $ResourceGroup `
         --issuer 'https://token.actions.githubusercontent.com' `
         --subject $Subject `
         --audiences 'api://AzureADTokenExchange' `
@@ -177,8 +188,9 @@ function Add-FederatedCredential {
 Add-FederatedCredential -Name "github-$GithubBranch" `
     -Subject "repo:$GithubOwner/${GithubRepo}:ref:refs/heads/$GithubBranch"
 
-# Lets pull requests run what-if against the real subscription without being able to
-# merge anything. Read the scope carefully before enabling this on a real system.
+# Lets pull requests preview infrastructure changes with what-if. Pull requests from
+# forks cannot use it: GitHub withholds id-token: write from them, so they never get
+# a token to present in the first place.
 Add-FederatedCredential -Name 'github-pull-request' `
     -Subject "repo:$GithubOwner/${GithubRepo}:pull_request"
 
@@ -186,12 +198,12 @@ Add-FederatedCredential -Name 'github-pull-request' `
 # so it cannot create the role assignment that main.bicep makes for the app-deploy
 # identity. Role Based Access Control Administrator supplies exactly that, and is
 # narrower than User Access Administrator.
-function Add-SubscriptionRole {
+function Add-ResourceGroupRole {
     param([string]$RoleId, [string]$Label)
 
-    Write-Host "==> Role assignment: $Label"
+    Write-Host "==> Role assignment on ${ResourceGroup}: $Label"
     # Tolerate "already assigned" on a rerun, but let every other failure reach the
-    # trap. Swallowing errors here would hide exactly the policy denial and
+    # trap. Swallowing errors here would hide exactly the policy denials and
     # authorization failures this script most often hits. $LASTEXITCODE is checked
     # explicitly because whether a failing native command throws depends on the
     # PowerShell version.
@@ -199,7 +211,7 @@ function Add-SubscriptionRole {
         --assignee-object-id $principalId `
         --assignee-principal-type ServicePrincipal `
         --role $RoleId `
-        --scope "/subscriptions/$subscriptionId" `
+        --scope $rgScope `
         --output none 2>&1
 
     if ($LASTEXITCODE -ne 0) {
@@ -212,8 +224,8 @@ function Add-SubscriptionRole {
     }
 }
 
-Add-SubscriptionRole -RoleId $contributorRole -Label 'Contributor (subscription)'
-Add-SubscriptionRole -RoleId $rbacAdminRole   -Label 'Role Based Access Control Administrator (subscription)'
+Add-ResourceGroupRole -RoleId $contributorRole -Label 'Contributor'
+Add-ResourceGroupRole -RoleId $rbacAdminRole   -Label 'Role Based Access Control Administrator'
 
 Write-Host @"
 
@@ -230,7 +242,11 @@ Write-Host @"
     gh variable set AZURE_TENANT_ID       --body "$tenantId"
     gh variable set AZURE_SUBSCRIPTION_ID --body "$subscriptionId"
 
-  Next: run the "Infra - deploy to Azure" workflow, then follow docs/00-azure-setup.md
-  to record AZURE_WEBAPP_NAME and AZURE_DEPLOY_CLIENT_ID from its output.
+  Check what the identity may do, and where:
+
+    az role assignment list --assignee $clientId --all -o table
+
+  Next: deploy the infrastructure into $ResourceGroup, then record
+  AZURE_WEBAPP_NAME and AZURE_DEPLOY_CLIENT_ID. See docs/00-azure-setup.md.
 
 "@

@@ -10,7 +10,7 @@ live demos have something concrete to point at.
 
 ```
 app/            .NET 10 minimal API with Swagger, plus unit and integration tests
-infra/          Bicep: resource group, App Service, monitoring, and the deploy identity
+infra/          Bicep: App Service, monitoring, and the deploy identity
 .github/        CI, infrastructure deploy, and two contrasting application deploys
 scripts/        One-time Azure bootstrap (bash and PowerShell)
 demo/           The prop that turns a pull request red on cue
@@ -49,6 +49,17 @@ Both application workflows build **once** and move a single artifact to the depl
 Their build jobs are identical on purpose — diff them and the only difference is how the
 deploy authenticates. That diff is the lesson.
 
+## One resource group, no subscription rights
+
+Everything lands in `rg-devops-demo-dev`: the web app, its plan, the logs, and both
+identities. Nothing is granted at subscription scope, so this runs in a subscription where
+you are trusted with a single resource group and nothing more.
+
+The group itself is the one thing created by hand — creating a resource group is a
+subscription-level write, and needing that back would defeat the point. You need Owner on
+the group, or Contributor **plus** User Access Administrator; the second is easy to miss,
+because User Access Administrator can assign roles but cannot create a single resource.
+
 ## Getting it running
 
 1. [`docs/00-azure-setup.md`](docs/00-azure-setup.md) — the two identities, and why there are two
@@ -72,7 +83,6 @@ something to argue against. Do not carry that flag into anything real.
 ## Tearing it down
 
 ```bash
-az group delete --name rg-devops-demo-dev      --yes --no-wait
-az group delete --name rg-devops-demo-identity --yes --no-wait
+az group delete --name rg-devops-demo-dev --yes --no-wait
 gh secret delete AZURE_WEBAPP_PUBLISH_PROFILE
 ```

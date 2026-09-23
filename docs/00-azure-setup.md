@@ -6,6 +6,16 @@ Nothing in this repository stores an Azure password, key or certificate. Both pi
 authenticate with short-lived tokens. This document explains how that trust is
 established, and why it is built the way it is.
 
+## Everything lives in one resource group
+
+`rg-devops-demo-dev` holds the lot: the web app, its plan, the logs, and both
+identities. Nothing in this setup is granted at subscription scope, which means it can
+run in a subscription where you are trusted with a single resource group and nothing
+more — the common case at work, and the same boundary the lecture argues for on slide 31.
+
+The resource group itself is the one thing you create by hand. Creating a resource group
+is a subscription-level write, and needing that right back would defeat the point.
+
 ## The two identities
 
 A single identity for everything would be simpler and wrong. The two pipelines need very
@@ -16,13 +26,14 @@ different power, so they get different identities:
 | Used by | `infra-deploy.yml` | `app-deploy-oidc.yml` |
 | Created by | `scripts/bootstrap-azure.sh` (by hand, once) | `infra/modules/deploy-identity.bicep` (by the pipeline) |
 | Roles | Contributor + Role Based Access Control Administrator | Website Contributor |
-| Scope | The whole subscription | One resource group |
-| Why so broad | It creates resource groups and role assignments, which are subscription-level operations | It only pushes code into an app that already exists |
+| Can | Create, change and delete anything in the group, and grant roles in it | Push code into an app that already exists |
+| Scope | `rg-devops-demo-dev` | `rg-devops-demo-dev` |
 
-That asymmetry is worth saying out loud during the lecture. "Least privilege" does not mean
-every identity is small; it means every identity is *as small as its job allows*. The
-infrastructure pipeline's job is genuinely large, so the honest answer is to keep it
-separate, use it rarely, and never give it to the app pipeline.
+Same scope, very different power. That is the honest shape of least privilege: you rarely
+get every identity down to nothing, but you can keep the powerful one rare, separate, and
+boxed into a blast radius you are willing to lose. Worth saying out loud during the
+lecture, because the alternative — one identity that does everything — is what most
+projects actually have.
 
 ### Why a managed identity and not an app registration
 
@@ -40,32 +51,15 @@ The call itself may be refused by a Conditional Access policy, in which case you
 even find out. Either way the answer is the same: do not build on an app registration.
 
 A **user-assigned managed identity** takes the same federated credentials but is an
-ordinary Azure resource on the Resource Manager plane. Owner on a subscription is enough,
-no directory rights required. It also shows up in the resource group, gets tagged, and is
+ordinary Azure resource on the Resource Manager plane. Rights on a resource group are
+enough, no directory rights required. It also shows up in the group, gets tagged, and is
 deleted along with everything else — which an app registration does not.
 
-## Step 1 — pick a subscription, and sign in with MFA
-
-Use a sandbox. The bootstrap grants subscription-wide Contributor **and** Role Based
-Access Control Administrator to an identity federated to a GitHub repository. In a shared
-or customer subscription that means anyone who can merge to `main` controls it, and the
-identity can hand any role to anyone.
-
-The script enforces this rather than trusting the warning: it prints how many resources the
-subscription already holds and refuses outright when the name contains `prod` or more than
-20 resources are present. Override only if you are certain:
-
-```bash
-I_KNOW_THIS_IS_NOT_A_SANDBOX=yes ./scripts/bootstrap-azure.sh
-```
-
-If you are on Windows, run the script from Git Bash, WSL or Cloud Shell — it sets
-`MSYS_NO_PATHCONV` internally, because Git Bash otherwise rewrites `/subscriptions/<guid>`
-into a Windows path and ARM answers with a misleading `MissingSubscription`.
+## Step 1 — sign in with MFA
 
 ```bash
 az login --scope https://management.azure.com//.default
-az account set --subscription "<your sandbox subscription>"
+az account set --subscription "<your subscription>"
 az account show --output table
 ```
 
@@ -75,7 +69,7 @@ when the caller's token was issued without MFA. Reads keep working, so everythin
 fine right up until the first write fails:
 
 ```
-RequestDisallowedByPolicy: Resource 'rg-devops-demo-identity' was disallowed by policy.
+RequestDisallowedByPolicy: Resource 'rg-devops-demo-dev' was disallowed by policy.
 ```
 
 A cached single-sign-on token often lacks the MFA claim. Requesting a token for
@@ -86,7 +80,29 @@ Worth knowing: that policy only applies when the caller is a **user**. Its rule 
 `requestContext().identity.idtyp == 'user'`, and managed identities present `app`. So it
 constrains this one-time manual step and never the pipelines created below.
 
-## Step 2 — run the bootstrap
+On Windows, run the scripts from Git Bash, WSL or Cloud Shell. They set
+`MSYS_NO_PATHCONV` internally, because Git Bash otherwise rewrites `/subscriptions/<guid>`
+into a Windows path and ARM answers with a misleading `MissingSubscription` that looks
+like a permissions problem.
+
+## Step 2 — create the resource group
+
+The one manual resource. Everything else is created by code.
+
+```bash
+az group create --name rg-devops-demo-dev --location norwayeast
+```
+
+You need **Owner** on it, or **Contributor plus User Access Administrator**. Both parts
+matter and the second is easy to miss: User Access Administrator grants
+`Microsoft.Authorization/*` but no resource write at all, so on its own it can assign
+roles and create nothing.
+
+If someone else administers the subscription, ask them for the group and for Owner on it.
+That is a far smaller request than subscription-wide rights, and it is the whole reason
+this setup is scoped the way it is.
+
+## Step 3 — run the bootstrap
 
 ```bash
 ./scripts/bootstrap-azure.sh
@@ -98,9 +114,17 @@ PowerShell:
 ./scripts/bootstrap-azure.ps1
 ```
 
-It creates `rg-devops-demo-identity`, the `id-devops-demo-iac` identity, two federated
-credentials, and two subscription-scope role assignments. It prints the three values you
-need next and asks for confirmation before changing anything.
+It creates the `id-devops-demo-iac` identity inside the group, two federated credentials,
+and two role assignments **on the group**. It prints the three values you need next and
+asks for confirmation before changing anything.
+
+It also refuses to run against a group that already holds resources, since a group shared
+with real work is the wrong blast radius for an identity a public repository can deploy
+with. Override only if those resources are yours:
+
+```bash
+I_KNOW_THE_GROUP_IS_NOT_EMPTY=yes ./scripts/bootstrap-azure.sh
+```
 
 ### What a federated credential actually is
 
@@ -114,7 +138,7 @@ repo:TobiasGunther/DevOps-Cloud-CI-CD-Demo:ref:refs/heads/main
 A different branch, a fork, or another repository produces a different subject and is
 refused. The trust is in *who is running the job*, not in a password someone copied.
 
-## Step 3 — record the identifiers in GitHub
+## Step 4 — record the identifiers in GitHub
 
 These are IDs, not credentials. They identify the identity; they do not authenticate as
 it. Store them as **variables**, not secrets — so the Secrets page stays visibly empty.
@@ -125,22 +149,32 @@ gh variable set AZURE_TENANT_ID       --body "<tenantId>"
 gh variable set AZURE_SUBSCRIPTION_ID --body "<subscriptionId>"
 ```
 
-## Step 4 — deploy the infrastructure
+## Step 5 — deploy the infrastructure
+
+The workflows are not on GitHub until you push, and two of the variables below come out of
+this deployment, so run it locally the first time:
+
+```bash
+az deployment group create   --resource-group rg-devops-demo-dev   --parameters infra/main.dev.bicepparam   --name infra-bootstrap
+```
+
+Afterwards the pipeline does exactly the same thing on every push to `main`:
 
 ```bash
 gh workflow run "Infra - deploy to Azure"
 gh run watch
 ```
 
-The run summary prints the resource group, the web app name and URL, and the client ID of
-the **app-deploy** identity that the Bicep just created. Record the last two:
+Either way you get the web app name and URL and the client ID of the **app-deploy**
+identity the Bicep just created. Record the two you need:
 
 ```bash
-gh variable set AZURE_WEBAPP_NAME       --body "<webAppName from the summary>"
-gh variable set AZURE_DEPLOY_CLIENT_ID  --body "<deployIdentityClientId from the summary>"
+gh variable set AZURE_WEBAPP_NAME --body "$(az deployment group show   --resource-group rg-devops-demo-dev --name infra-bootstrap   --query properties.outputs.webAppName.value -o tsv)"
+
+gh variable set AZURE_DEPLOY_CLIENT_ID --body "$(az deployment group show   --resource-group rg-devops-demo-dev --name infra-bootstrap   --query properties.outputs.deployIdentityClientId.value -o tsv)"
 ```
 
-## Step 5 — the publish profile, for the insecure demo only
+## Step 6 — the publish profile, for the insecure demo only
 
 This is the thing the lecture argues against, so create it deliberately and delete it
 afterwards.
@@ -178,12 +212,12 @@ az identity federated-credential list \
 ## Tearing it down
 
 ```bash
-az group delete --name rg-devops-demo-dev      --yes --no-wait
-az group delete --name rg-devops-demo-identity --yes --no-wait
+az group delete --name rg-devops-demo-dev --yes --no-wait
 ```
 
-Deleting the identity resource group revokes both pipelines at once. There is no secret
-left behind at GitHub to worry about, except the publish profile — delete that too:
+One group holds everything, so deleting it revokes both pipelines and removes every
+resource in a single step. There is no secret left behind at GitHub to worry about, except
+the publish profile — delete that too:
 
 ```bash
 gh secret delete AZURE_WEBAPP_PUBLISH_PROFILE
