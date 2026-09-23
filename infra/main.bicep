@@ -1,5 +1,6 @@
 // -----------------------------------------------------------------------------
-// Gjesteforelesning USN - "Fra kode til produksjon"
+// Demo: "Fra kode til produksjon" - a resource group, a web app, and the identity
+// that is allowed to deploy to it.
 //
 // Deployed at SUBSCRIPTION scope, because this file creates the resource group
 // itself. That is a deliberate teaching point: the pipeline that creates resource
@@ -13,7 +14,7 @@ targetScope = 'subscription'
 @description('Short name for the workload. Used as a prefix for every resource name.')
 @minLength(3)
 @maxLength(12)
-param workload string = 'usndevops'
+param workload string = 'devops-demo'
 
 @description('Environment discriminator, e.g. dev or test.')
 @allowed(['dev', 'test'])
@@ -52,7 +53,7 @@ var tags = {
   workload: workload
   environment: environmentName
   managedBy: 'bicep'
-  purpose: 'USN guest lecture demo'
+  purpose: 'Temporary CI/CD demo'
 }
 
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = {

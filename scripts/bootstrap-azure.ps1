@@ -19,7 +19,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Workload      = 'usndevops',
+    [string]$Workload      = 'devops-demo',
     [string]$Location      = 'westeurope',
     [string]$GithubOwner   = 'TobiasGunther',
     [string]$GithubRepo    = 'DevOps-Cloud-CI-CD-Demo',
@@ -64,7 +64,7 @@ if ((Read-Host 'Continue? [y/N]') -notin @('y', 'Y')) {
 
 Write-Host "==> Resource group $identityRg"
 az group create --name $identityRg --location $Location `
-    --tags workload=$Workload purpose='USN guest lecture demo' managedBy='bootstrap script' `
+    --tags workload=$Workload purpose='Temporary CI/CD demo' managedBy='bootstrap script' `
     --output none
 
 Write-Host "==> Managed identity $identityName"

@@ -28,7 +28,7 @@ reset it early.
 Check on the morning:
 
 ```bash
-az webapp show --name "$AZURE_WEBAPP_NAME" --resource-group rg-usndevops-dev \
+az webapp show --name "$AZURE_WEBAPP_NAME" --resource-group rg-devops-demo-dev \
   --query "{state:state, availability:availabilityState}" -o table
 ```
 
@@ -59,7 +59,7 @@ yourself during the break as well.
   - Actions tab of the repository
   - Settings → Secrets and variables
   - The two workflow files side by side
-  - Azure portal on `rg-usndevops-dev`
+  - Azure portal on `rg-devops-demo-dev`
   - `https://<app>.azurewebsites.net/swagger`
 - [ ] Warm the app: `curl -s https://<app>.azurewebsites.net/health`
 - [ ] Terminal in the repository root, `main` branch, clean working tree.
@@ -69,7 +69,7 @@ yourself during the break as well.
 
 Follow the slide's order rather than clicking around:
 
-1. **Resource group** `rg-usndevops-dev` — everything that shares a lifecycle, in one place
+1. **Resource group** `rg-devops-demo-dev` — everything that shares a lifecycle, in one place
 2. **App Service** — configuration, environment variables, which version is live
 3. **Log Analytics / Application Insights** — logs and metrics; observability in practice
 4. **Cost analysis** — what this costs per month, and set a budget alert live
@@ -80,8 +80,8 @@ Say out loud that AWS and Google Cloud have the same four things under different
 
 ```bash
 gh secret delete AZURE_WEBAPP_PUBLISH_PROFILE
-az group delete --name rg-usndevops-dev      --yes --no-wait
-az group delete --name rg-usndevops-identity --yes --no-wait
+az group delete --name rg-devops-demo-dev      --yes --no-wait
+az group delete --name rg-devops-demo-identity --yes --no-wait
 ```
 
 Leaving the resource group running is exactly the mistake slide 25 warns about. Delete it
