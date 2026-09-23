@@ -2,7 +2,7 @@
 # Switch @host between local and the deployed app to show the same requests hitting both.
 
 @host = http://localhost:5292
-# @host = https://app-usndevops-dev-xxxxx.azurewebsites.net
+# @host = https://app-devops-demo-dev-xxxxx.azurewebsites.net
 
 ### What is running right now? Version and commit come from the artifact,
 ### environment and message come from App Service configuration.

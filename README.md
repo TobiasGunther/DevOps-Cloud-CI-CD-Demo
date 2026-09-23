@@ -72,7 +72,7 @@ something to argue against. Do not carry that flag into anything real.
 ## Tearing it down
 
 ```bash
-az group delete --name rg-usndevops-dev      --yes --no-wait
-az group delete --name rg-usndevops-identity --yes --no-wait
+az group delete --name rg-devops-demo-dev      --yes --no-wait
+az group delete --name rg-devops-demo-identity --yes --no-wait
 gh secret delete AZURE_WEBAPP_PUBLISH_PROFILE
 ```

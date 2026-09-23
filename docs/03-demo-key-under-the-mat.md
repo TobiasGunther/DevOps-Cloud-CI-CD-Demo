@@ -37,7 +37,7 @@ setup, or fetch a fresh one:
 
 ```bash
 az webapp deployment list-publishing-profiles \
-  --name "$AZURE_WEBAPP_NAME" --resource-group rg-usndevops-dev --xml
+  --name "$AZURE_WEBAPP_NAME" --resource-group rg-devops-demo-dev --xml
 ```
 
 Point at `userName` and `userPWD`. A working username and password, in clear text. Then
@@ -92,8 +92,8 @@ live:
 
 ```bash
 az identity federated-credential list \
-  --identity-name id-usndevops-dev-deploy \
-  --resource-group rg-usndevops-dev \
+  --identity-name id-devops-demo-dev-deploy \
+  --resource-group rg-devops-demo-dev \
   --query "[].{name:name, subject:subject, issuer:issuer}" -o table
 ```
 

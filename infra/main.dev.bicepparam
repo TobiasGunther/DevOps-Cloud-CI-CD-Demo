@@ -1,6 +1,6 @@
 using './main.bicep'
 
-param workload = 'usndevops'
+param workload = 'devops-demo'
 param environmentName = 'dev'
 param location = 'westeurope'
 

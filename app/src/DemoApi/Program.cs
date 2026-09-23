@@ -10,7 +10,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "DevOps demo API",
         Version = "v1",
-        Description = "Gjestforelesning USN - fra kode til produksjon. "
+        Description = "Fra kode til produksjon. "
                     + "Denne appen ble bygget av en pipeline og rullet ut til Azure App Service uten at noen kopierte en fil.",
     });
 });

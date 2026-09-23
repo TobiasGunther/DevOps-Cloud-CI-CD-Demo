@@ -24,7 +24,7 @@
 set -euo pipefail
 
 # ---- settings ---------------------------------------------------------------
-WORKLOAD="${WORKLOAD:-usndevops}"
+WORKLOAD="${WORKLOAD:-devops-demo}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 LOCATION="${LOCATION:-westeurope}"
 GITHUB_OWNER="${GITHUB_OWNER:-TobiasGunther}"
@@ -64,7 +64,7 @@ read -r -p "Continue? [y/N] " reply
 # ---- 1. resource group for the identity -------------------------------------
 echo "==> Resource group ${IDENTITY_RG}"
 az group create --name "${IDENTITY_RG}" --location "${LOCATION}" \
-  --tags workload="${WORKLOAD}" purpose="USN guest lecture demo" managedBy="bootstrap script" \
+  --tags workload="${WORKLOAD}" purpose="Temporary CI/CD demo" managedBy="bootstrap script" \
   --output none
 
 # ---- 2. the identity --------------------------------------------------------

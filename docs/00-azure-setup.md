@@ -11,7 +11,7 @@ established, and why it is built the way it is.
 A single identity for everything would be simpler and wrong. The two pipelines need very
 different power, so they get different identities:
 
-| | `id-usndevops-iac` | `id-usndevops-dev-deploy` |
+| | `id-devops-demo-iac` | `id-devops-demo-dev-deploy` |
 | --- | --- | --- |
 | Used by | `infra-deploy.yml` | `app-deploy-oidc.yml` |
 | Created by | `scripts/bootstrap-azure.sh` (by hand, once) | `infra/modules/deploy-identity.bicep` (by the pipeline) |
@@ -28,13 +28,16 @@ separate, use it rarely, and never give it to the app pipeline.
 
 Most guides tell you to create an Entra **app registration** (a "service principal") and
 put a federated credential on it. That works, but it needs permission to write to the
-Entra directory, and plenty of tenants forbid that. The USN tenant is one of them:
+Entra directory, and plenty of tenants forbid that. Check before you rely on it:
 
 ```bash
 az rest --method GET --url "https://graph.microsoft.com/v1.0/policies/authorizationPolicy" \
   --query "defaultUserRolePermissions.allowedToCreateApps"
-# false
+# false  -> ordinary users cannot create app registrations in this tenant
 ```
+
+The call itself may be refused by a Conditional Access policy, in which case you cannot
+even find out. Either way the answer is the same: do not build on an app registration.
 
 A **user-assigned managed identity** takes the same federated credentials but is an
 ordinary Azure resource on the Resource Manager plane. Owner on a subscription is enough,
@@ -64,7 +67,7 @@ PowerShell:
 ./scripts/bootstrap-azure.ps1
 ```
 
-It creates `rg-usndevops-identity`, the `id-usndevops-iac` identity, two federated
+It creates `rg-devops-demo-identity`, the `id-devops-demo-iac` identity, two federated
 credentials, and two subscription-scope role assignments. It prints the three values you
 need next and asks for confirmation before changing anything.
 
@@ -118,7 +121,7 @@ no publish profile password exists at all.
 ```bash
 az webapp deployment list-publishing-profiles \
   --name "<webAppName>" \
-  --resource-group "rg-usndevops-dev" \
+  --resource-group "rg-devops-demo-dev" \
   --xml > publish-profile.xml
 
 gh secret set AZURE_WEBAPP_PUBLISH_PROFILE < publish-profile.xml
@@ -136,16 +139,16 @@ az role assignment list --assignee "<deployIdentityClientId>" --all -o table
 
 # The federated trust, and the branch it is bound to.
 az identity federated-credential list \
-  --identity-name "id-usndevops-dev-deploy" \
-  --resource-group "rg-usndevops-dev" \
+  --identity-name "id-devops-demo-dev-deploy" \
+  --resource-group "rg-devops-demo-dev" \
   --query "[].{name:name, subject:subject}" -o table
 ```
 
 ## Tearing it down
 
 ```bash
-az group delete --name rg-usndevops-dev      --yes --no-wait
-az group delete --name rg-usndevops-identity --yes --no-wait
+az group delete --name rg-devops-demo-dev      --yes --no-wait
+az group delete --name rg-devops-demo-identity --yes --no-wait
 ```
 
 Deleting the identity resource group revokes both pipelines at once. There is no secret
