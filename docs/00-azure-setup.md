@@ -44,16 +44,33 @@ ordinary Azure resource on the Resource Manager plane. Owner on a subscription i
 no directory rights required. It also shows up in the resource group, gets tagged, and is
 deleted along with everything else — which an app registration does not.
 
-## Step 1 — pick a subscription
+## Step 1 — pick a subscription, and sign in with MFA
 
 Use a sandbox. The bootstrap grants subscription-wide Contributor, which does not belong
 in a shared or customer subscription.
 
 ```bash
-az login
+az login --scope https://management.azure.com//.default
 az account set --subscription "<your sandbox subscription>"
 az account show --output table
 ```
+
+The `--scope` is not decoration. Many tenants assign the built-in policy **Multi Factor
+Authentication Enforcement - Write**, which denies every resource *create* and *update*
+when the caller's token was issued without MFA. Reads keep working, so everything looks
+fine right up until the first write fails:
+
+```
+RequestDisallowedByPolicy: Resource 'rg-devops-demo-identity' was disallowed by policy.
+```
+
+A cached single-sign-on token often lacks the MFA claim. Requesting a token for
+Azure Resource Manager explicitly forces a fresh sign-in, which triggers the MFA
+challenge. If it still fails, `az logout` first.
+
+Worth knowing: that policy only applies when the caller is a **user**. Its rule tests
+`requestContext().identity.idtyp == 'user'`, and managed identities present `app`. So it
+constrains this one-time manual step and never the pipelines created below.
 
 ## Step 2 — run the bootstrap
 
