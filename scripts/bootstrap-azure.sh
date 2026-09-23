@@ -23,6 +23,42 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
+# Without this, a failing az command exits the script instantly. If the script was
+# started by double-clicking it, the window closes with it and the error is gone
+# before anyone can read it. Explain what happened and hold the window open.
+on_error() {
+  local exit_code=$? line=$1
+  echo
+  echo "  --------------------------------------------------------------------"
+  echo "  Stopped at line ${line} (exit ${exit_code}). The Azure CLI error is"
+  echo "  printed above this box."
+  echo
+  echo "  Two failures are common here:"
+  echo
+  echo "  RequestDisallowedByPolicy, mentioning multi-factor authentication"
+  echo "      Your Azure token was issued without MFA, and this tenant denies"
+  echo "      resource writes from such tokens. Sign in again and rerun:"
+  echo
+  echo "          az logout"
+  echo "          az login --scope https://management.azure.com//.default"
+  echo
+  echo "  AuthorizationFailed"
+  echo "      The account lacks Owner, or Contributor plus Role Based Access"
+  echo "      Control Administrator, on this subscription. Check with:"
+  echo
+  echo "          az account show --output table"
+  echo
+  echo "  Nothing is left half-built: rerunning is safe, every step is idempotent."
+  echo "  --------------------------------------------------------------------"
+  echo
+  # Only pause when someone is actually watching; never hang a CI run.
+  if [ -t 0 ]; then
+    read -r -p "  Press Enter to close. " _ || true
+  fi
+  exit "${exit_code}"
+}
+trap 'on_error ${LINENO}' ERR
+
 # ---- settings ---------------------------------------------------------------
 WORKLOAD="${WORKLOAD:-devops-demo}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
@@ -107,14 +143,25 @@ add_credential "github-pull-request" \
 # identity. Role Based Access Control Administrator supplies exactly that, and is
 # narrower than User Access Administrator.
 assign_role() {
-  local role="$1" label="$2"
+  local role="$1" label="$2" err
   echo "==> Role assignment: ${label}"
-  az role assignment create \
+  # Tolerate "already assigned" on a rerun, but let every other failure through to
+  # the ERR trap. Swallowing errors here would hide exactly the policy denial and
+  # authorization failures this script most often hits.
+  if ! err=$(az role assignment create \
     --assignee-object-id "${PRINCIPAL_ID}" \
     --assignee-principal-type ServicePrincipal \
     --role "${role}" \
     --scope "/subscriptions/${SUBSCRIPTION_ID}" \
-    --output none
+    --output none 2>&1); then
+    case "${err}" in
+      *RoleAssignmentExists*|*already\ exists*)
+        echo "    (already assigned)" ;;
+      *)
+        printf '%s\n' "${err}" >&2
+        return 1 ;;
+    esac
+  fi
 }
 
 assign_role "${CONTRIBUTOR_ROLE}" "Contributor (subscription)"

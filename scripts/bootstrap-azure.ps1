@@ -28,6 +28,39 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Without this, a failure ends the script instantly. If it was started by
+# right-click "Run with PowerShell", the window closes with it and the error is gone
+# before anyone can read it. Explain what happened and hold the window open.
+trap {
+    Write-Host ''
+    Write-Host '  --------------------------------------------------------------------'
+    Write-Host "  Stopped: $($_.Exception.Message)"
+    Write-Host ''
+    Write-Host '  Two failures are common here:'
+    Write-Host ''
+    Write-Host '  RequestDisallowedByPolicy, mentioning multi-factor authentication'
+    Write-Host '      Your Azure token was issued without MFA, and this tenant denies'
+    Write-Host '      resource writes from such tokens. Sign in again and rerun:'
+    Write-Host ''
+    Write-Host '          az logout'
+    Write-Host '          az login --scope https://management.azure.com//.default'
+    Write-Host ''
+    Write-Host '  AuthorizationFailed'
+    Write-Host '      The account lacks Owner, or Contributor plus Role Based Access'
+    Write-Host '      Control Administrator, on this subscription. Check with:'
+    Write-Host ''
+    Write-Host '          az account show --output table'
+    Write-Host ''
+    Write-Host '  Nothing is left half-built: rerunning is safe, every step is idempotent.'
+    Write-Host '  --------------------------------------------------------------------'
+    Write-Host ''
+    # Only pause when someone is actually watching; never hang an automated run.
+    if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        Read-Host '  Press Enter to close'
+    }
+    exit 1
+}
+
 $identityRg   = "rg-$Workload-identity"
 $identityName = "id-$Workload-iac"
 
@@ -39,7 +72,14 @@ if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
     throw 'Azure CLI not found.'
 }
 
-$account         = az account show | ConvertFrom-Json
+# ConvertFrom-Json does not throw on empty input, so a failed "az account show"
+# would otherwise sail past with a blank subscription and only fail much later,
+# halfway through creating things. Check the exit code explicitly.
+$account = az account show 2>$null | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or -not $account.id) {
+    throw 'Not signed in to Azure. Run: az login --scope https://management.azure.com//.default'
+}
+
 $subscriptionId  = $account.id
 $tenantId        = $account.tenantId
 
@@ -108,12 +148,26 @@ function Add-SubscriptionRole {
     param([string]$RoleId, [string]$Label)
 
     Write-Host "==> Role assignment: $Label"
-    az role assignment create `
+    # Tolerate "already assigned" on a rerun, but let every other failure reach the
+    # trap. Swallowing errors here would hide exactly the policy denial and
+    # authorization failures this script most often hits. $LASTEXITCODE is checked
+    # explicitly because whether a failing native command throws depends on the
+    # PowerShell version.
+    $stderr = az role assignment create `
         --assignee-object-id $principalId `
         --assignee-principal-type ServicePrincipal `
         --role $RoleId `
         --scope "/subscriptions/$subscriptionId" `
-        --output none
+        --output none 2>&1
+
+    if ($LASTEXITCODE -ne 0) {
+        if ("$stderr" -match 'RoleAssignmentExists|already exists') {
+            Write-Host '    (already assigned)'
+        }
+        else {
+            throw "$stderr"
+        }
+    }
 }
 
 Add-SubscriptionRole -RoleId $contributorRole -Label 'Contributor (subscription)'
