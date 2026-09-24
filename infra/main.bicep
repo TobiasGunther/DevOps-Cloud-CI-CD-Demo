@@ -41,9 +41,6 @@ Read it rather than constructing it - GitHub now pins subjects to immutable nume
 ''')
 param githubSubjectPrefix string
 
-@description('Branch allowed to deploy the application. The federated trust is scoped to exactly this branch.')
-param githubBranch string = 'main'
-
 @description('''
 Leave true for the "key under the mat" demo: it re-enables SCM basic authentication so a
 publish profile exists at all. Azure disables this by default on new apps precisely because
@@ -93,7 +90,6 @@ module deployIdentity 'modules/deploy-identity.bicep' = {
     location: location
     tags: tags
     githubSubjectPrefix: githubSubjectPrefix
-    githubBranch: githubBranch
   }
 }
 

@@ -16,7 +16,6 @@ param environmentName string
 param location string
 param tags object
 param githubSubjectPrefix string
-param githubBranch string
 
 // Website Contributor. Verified against
 // https://learn.microsoft.com/azure/role-based-access-control/built-in-roles/web-and-mobile
@@ -47,12 +46,26 @@ resource deployIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-1
 // still use the plain "repo:owner/name" form. Read yours rather than guessing:
 //
 //   gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
-resource branchCredential 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30' = {
+// Note the claim: "environment", not "ref". A job that declares
+//
+//   environment:
+//     name: dev
+//
+// presents environment:dev INSTEAD OF ref:refs/heads/main - GitHub swaps one for the
+// other, it does not send both. app-deploy-oidc.yml declares the environment, so this is
+// the subject it will actually present.
+//
+// On its own an environment claim is WEAKER than a branch claim, because by default any
+// branch may deploy to an environment. It is only tighter once the environment carries a
+// deployment branch policy limiting it to one branch, which docs/01-github-setup.md
+// sets up. With both in place two conditions must hold rather than one, and the
+// environment can additionally require a human approval.
+resource environmentCredential 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30' = {
   parent: deployIdentity
-  name: 'github-${githubBranch}'
+  name: 'github-environment-${environmentName}'
   properties: {
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: '${githubSubjectPrefix}:ref:refs/heads/${githubBranch}'
+    subject: '${githubSubjectPrefix}:environment:${environmentName}'
     audiences: [
       'api://AzureADTokenExchange'
     ]
