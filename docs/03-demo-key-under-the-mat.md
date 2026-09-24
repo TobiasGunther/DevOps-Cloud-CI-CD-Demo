@@ -84,11 +84,14 @@ with it.
 **The federated credential** — the subject is the security boundary:
 
 ```
-repo:TobiasGunther/DevOps-Cloud-CI-CD-Demo:ref:refs/heads/main
+repo:TobiasGunther@107984787/DevOps-Cloud-CI-CD-Demo@1382946058:ref:refs/heads/main
 ```
 
-One repository. One branch. A fork produces a different subject and is refused. Show it
-live:
+One repository. One branch. A fork produces a different subject and is refused.
+
+The numbers are GitHub's immutable owner and repository IDs, and they are worth a sentence:
+names can be released and reclaimed, so trusting `owner/name` would let whoever claims the
+name next inherit this access. Trusting the IDs does not. Show it live:
 
 ```bash
 az identity federated-credential list \

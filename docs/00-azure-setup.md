@@ -132,11 +132,38 @@ There is no secret involved. GitHub signs a token describing the run, and Entra 
 it only if the **subject** matches exactly:
 
 ```
-repo:TobiasGunther/DevOps-Cloud-CI-CD-Demo:ref:refs/heads/main
+repo:TobiasGunther@107984787/DevOps-Cloud-CI-CD-Demo@1382946058:ref:refs/heads/main
 ```
 
 A different branch, a fork, or another repository produces a different subject and is
 refused. The trust is in *who is running the job*, not in a password someone copied.
+
+#### Those numbers are the point, not noise
+
+`107984787` is the owner ID and `1382946058` the repository ID. GitHub now pins the subject
+to these **immutable** IDs rather than to names. Names can be released and reclaimed: delete
+a repository, and someone else can create one with the same full name. Under the old
+`repo:owner/name` form that impostor would have inherited this Azure access. Under the new
+form it cannot, because it gets a different repository ID.
+
+So read the prefix rather than typing it:
+
+```bash
+gh api repos/TobiasGunther/DevOps-Cloud-CI-CD-Demo/actions/oidc/customization/sub   --jq .sub_claim_prefix
+```
+
+The bootstrap scripts do this for you. If the credential and the token disagree, the first
+deploy fails with:
+
+```
+AADSTS700213: No matching federated identity record found for presented assertion subject
+```
+
+which names the subject GitHub actually sent — copy it from there. Both the scripts and
+`infra/main.dev.bicepparam` need the same value, in `githubSubjectPrefix`.
+
+Older repositories still present the plain `repo:owner/name` form. The command above
+reports whichever applies, so it is correct either way.
 
 ## Step 4 — record the identifiers in GitHub
 

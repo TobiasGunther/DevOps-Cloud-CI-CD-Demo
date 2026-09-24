@@ -185,14 +185,37 @@ function Add-FederatedCredential {
         --output none
 }
 
+# Do not construct the subject by hand. GitHub now pins it to immutable numeric owner
+# and repository IDs, so it reads "repo:owner@107984787/name@1382946058" rather than
+# "repo:owner/name". Guessing wrong produces AADSTS700213 at the first deploy, with a
+# message that looks like a configuration mistake somewhere else entirely.
+$subjectPrefix = $null
+if (Get-Command gh -ErrorAction SilentlyContinue) {
+    $subjectPrefix = gh api "repos/$GithubOwner/$GithubRepo/actions/oidc/customization/sub" `
+        --jq .sub_claim_prefix 2>$null
+    if ($LASTEXITCODE -ne 0) { $subjectPrefix = $null }
+}
+
+if ($subjectPrefix) {
+    Write-Host '==> Subject prefix, read from GitHub:'
+    Write-Host "    $subjectPrefix"
+}
+else {
+    $subjectPrefix = "repo:$GithubOwner/$GithubRepo"
+    Write-Host '==> Could not ask GitHub for the subject prefix; assuming the older form:'
+    Write-Host "    $subjectPrefix"
+    Write-Host '    If the first deploy fails with AADSTS700213, read the real one with:'
+    Write-Host "      gh api repos/$GithubOwner/$GithubRepo/actions/oidc/customization/sub --jq .sub_claim_prefix"
+}
+
 Add-FederatedCredential -Name "github-$GithubBranch" `
-    -Subject "repo:$GithubOwner/${GithubRepo}:ref:refs/heads/$GithubBranch"
+    -Subject "${subjectPrefix}:ref:refs/heads/$GithubBranch"
 
 # Lets pull requests preview infrastructure changes with what-if. Pull requests from
 # forks cannot use it: GitHub withholds id-token: write from them, so they never get
 # a token to present in the first place.
 Add-FederatedCredential -Name 'github-pull-request' `
-    -Subject "repo:$GithubOwner/${GithubRepo}:pull_request"
+    -Subject "${subjectPrefix}:pull_request"
 
 # Contributor alone is NOT enough: its notActions exclude Microsoft.Authorization/*/Write,
 # so it cannot create the role assignment that main.bicep makes for the app-deploy
@@ -245,6 +268,10 @@ Write-Host @"
   Check what the identity may do, and where:
 
     az role assignment list --assignee $clientId --all -o table
+
+  The Bicep needs the same subject prefix. Confirm it matches infra/main.dev.bicepparam:
+
+    param githubSubjectPrefix = '$subjectPrefix'
 
   Next: deploy the infrastructure into $ResourceGroup, then record
   AZURE_WEBAPP_NAME and AZURE_DEPLOY_CLIENT_ID. See docs/00-azure-setup.md.

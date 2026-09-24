@@ -189,14 +189,32 @@ add_credential() {
     --output none
 }
 
+# Do not construct the subject by hand. GitHub now pins it to immutable numeric owner
+# and repository IDs, so it reads "repo:owner@107984787/name@1382946058" rather than
+# "repo:owner/name". Guessing wrong produces AADSTS700213 at the first deploy, with a
+# message that looks like a configuration mistake somewhere else entirely.
+if command -v gh >/dev/null 2>&1 &&
+   SUBJECT_PREFIX=$(gh api "repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/oidc/customization/sub" \
+                      --jq .sub_claim_prefix 2>/dev/null) &&
+   [ -n "${SUBJECT_PREFIX}" ]; then
+  echo "==> Subject prefix, read from GitHub:"
+  echo "    ${SUBJECT_PREFIX}"
+else
+  SUBJECT_PREFIX="repo:${GITHUB_OWNER}/${GITHUB_REPO}"
+  echo "==> Could not ask GitHub for the subject prefix; assuming the older form:"
+  echo "    ${SUBJECT_PREFIX}"
+  echo "    If the first deploy fails with AADSTS700213, read the real one with:"
+  echo "      gh api repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/oidc/customization/sub --jq .sub_claim_prefix"
+fi
+
 add_credential "github-${GITHUB_BRANCH}" \
-  "repo:${GITHUB_OWNER}/${GITHUB_REPO}:ref:refs/heads/${GITHUB_BRANCH}"
+  "${SUBJECT_PREFIX}:ref:refs/heads/${GITHUB_BRANCH}"
 
 # Lets pull requests preview infrastructure changes with what-if. Pull requests from
 # forks cannot use it: GitHub withholds id-token: write from them, so they never get
 # a token to present in the first place.
 add_credential "github-pull-request" \
-  "repo:${GITHUB_OWNER}/${GITHUB_REPO}:pull_request"
+  "${SUBJECT_PREFIX}:pull_request"
 
 # ---- 3. role assignments, scoped to the group -------------------------------
 # Contributor alone is NOT enough: its notActions exclude Microsoft.Authorization/*/Write,
@@ -247,6 +265,10 @@ cat <<EOF
   Check what the identity may do, and where:
 
     az role assignment list --assignee ${CLIENT_ID} --all -o table
+
+  The Bicep needs the same subject prefix. Confirm it matches infra/main.dev.bicepparam:
+
+    param githubSubjectPrefix = '${SUBJECT_PREFIX}'
 
   Next: deploy the infrastructure into ${RESOURCE_GROUP}, then record
   AZURE_WEBAPP_NAME and AZURE_DEPLOY_CLIENT_ID. See docs/00-azure-setup.md.
