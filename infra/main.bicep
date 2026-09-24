@@ -34,11 +34,12 @@ param location string = resourceGroup().location
 @allowed(['F1', 'B1'])
 param appServicePlanSku string = 'F1'
 
-@description('GitHub organisation or user that owns the demo repository.')
-param githubOwner string
-
-@description('GitHub repository name, without the owner.')
-param githubRepo string
+@description('''
+GitHub's OIDC subject prefix for this repository, which the federated trust is anchored to.
+Read it rather than constructing it - GitHub now pins subjects to immutable numeric IDs:
+  gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
+''')
+param githubSubjectPrefix string
 
 @description('Branch allowed to deploy the application. The federated trust is scoped to exactly this branch.')
 param githubBranch string = 'main'
@@ -91,8 +92,7 @@ module deployIdentity 'modules/deploy-identity.bicep' = {
     environmentName: environmentName
     location: location
     tags: tags
-    githubOwner: githubOwner
-    githubRepo: githubRepo
+    githubSubjectPrefix: githubSubjectPrefix
     githubBranch: githubBranch
   }
 }

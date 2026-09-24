@@ -14,8 +14,11 @@ param environmentName = 'dev'
 // the infra workflow, and carry on: it takes about a minute and costs roughly USD 0.45/day.
 param appServicePlanSku = 'F1'
 
-param githubOwner = 'TobiasGunther'
-param githubRepo = 'DevOps-Cloud-CI-CD-Demo'
+// Read with:
+//   gh api repos/TobiasGunther/DevOps-Cloud-CI-CD-Demo/actions/oidc/customization/sub --jq .sub_claim_prefix
+// The numbers are GitHub's immutable owner and repository IDs. They are what make the
+// trust survive a rename and refuse a recreated repository of the same name.
+param githubSubjectPrefix = 'repo:TobiasGunther@107984787/DevOps-Cloud-CI-CD-Demo@1382946058'
 param githubBranch = 'main'
 
 // true  -> a publish profile exists, and workflow 3 (the insecure one) works.

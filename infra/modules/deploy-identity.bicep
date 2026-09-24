@@ -15,8 +15,7 @@ param workload string
 param environmentName string
 param location string
 param tags object
-param githubOwner string
-param githubRepo string
+param githubSubjectPrefix string
 param githubBranch string
 
 // Website Contributor. Verified against
@@ -38,12 +37,22 @@ resource deployIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-1
 //
 // The subject is the security boundary. A fork, a different branch, or a pull request
 // from an outside contributor produces a different subject and is refused.
+//
+// The prefix usually looks like this, with numeric owner and repository IDs:
+//
+//   repo:octocat@107984787/my-repo@1382946058
+//
+// GitHub pins the subject to those immutable IDs so that deleting a repository and
+// recreating it under the same name does not inherit its access. Older repositories
+// still use the plain "repo:owner/name" form. Read yours rather than guessing:
+//
+//   gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
 resource branchCredential 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30' = {
   parent: deployIdentity
   name: 'github-${githubBranch}'
   properties: {
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:${githubOwner}/${githubRepo}:ref:refs/heads/${githubBranch}'
+    subject: '${githubSubjectPrefix}:ref:refs/heads/${githubBranch}'
     audiences: [
       'api://AzureADTokenExchange'
     ]
