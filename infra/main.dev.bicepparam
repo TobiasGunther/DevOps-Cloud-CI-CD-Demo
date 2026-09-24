@@ -19,7 +19,6 @@ param appServicePlanSku = 'F1'
 // The numbers are GitHub's immutable owner and repository IDs. They are what make the
 // trust survive a rename and refuse a recreated repository of the same name.
 param githubSubjectPrefix = 'repo:TobiasGunther@107984787/DevOps-Cloud-CI-CD-Demo@1382946058'
-param githubBranch = 'main'
 
 // true  -> a publish profile exists, and workflow 3 (the insecure one) works.
 // false -> no publish profile password exists; workflow 3 fails with 401 while workflow 4

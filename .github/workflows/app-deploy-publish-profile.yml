@@ -42,13 +42,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # SourceRevisionId is what the SDK appends to InformationalVersion as "+<sha>".
+      # Setting InformationalVersion to "1.0.N+<sha>" by hand instead gets the revision
+      # appended a second time, and /api/info then reports the commit twice.
       - name: Publish
         run: |
           dotnet publish app/src/DemoApi/DemoApi.csproj \
             --configuration Release \
             --output ./publish \
             -p:Version=1.0.${{ github.run_number }} \
-            -p:InformationalVersion=1.0.${{ github.run_number }}+${{ github.sha }}
+            -p:SourceRevisionId=${{ github.sha }}
 
       - name: Upload the artifact
         uses: actions/upload-artifact@v7
