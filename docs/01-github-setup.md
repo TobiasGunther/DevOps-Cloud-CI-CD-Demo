@@ -55,7 +55,7 @@ gh api -X PUT "repos/{owner}/{repo}/branches/main/protection" \
   --input - <<'JSON'
 {
   "required_status_checks": {
-    "strict": true,
+    "strict": false,
     "contexts": ["Build and test"]
   },
   "enforce_admins": false,
@@ -71,6 +71,13 @@ Notes:
 
 - `"Build and test"` is the **job name** from `ci.yml` (`jobs.build-and-test.name`), not
   the workflow name. If you rename the job, update this.
+- Require only that one check. `ci.yml` has no `paths:` filter, so it reports on every
+  pull request. `infra-deploy.yml` and the app deploys do have `paths:` filters, and a
+  required check from a workflow that did not run never reports at all — the pull request
+  then waits forever for something that is not coming.
+- `strict: false` is deliberate. Strict mode additionally demands the branch be up to date
+  with `main` before merging, which is good practice and an unnecessary way to have the
+  merge button greyed out for the wrong reason in front of a room. Turn it on for real work.
 - `enforce_admins: false` is deliberate. You stay able to merge past a red check if
   something goes wrong live — and being honest about that with the students is a better
   lesson than pretending the rule is absolute. Mention that a real project would usually
