@@ -59,6 +59,13 @@ app.MapGet("/api/principles", () => TypedResults.Ok(DevOpsPrinciples.All))
    .WithDescription("Served by the app you just watched a pipeline deploy.")
    .Produces<IReadOnlyList<Principle>>();
 
+app.MapGet("/api/cloud/services", () => TypedResults.Ok(CloudServices.All))
+   .WithName("GetCloudServices")
+   .WithTags("Cloud")
+   .WithSummary("Same concepts, different names at AWS, Azure and Google Cloud")
+   .WithDescription("The app answering this request runs on the second row: Azure App Service.")
+   .Produces<IReadOnlyList<CloudService>>();
+
 // Used by the deploy workflows as a smoke test and by the keep-warm schedule.
 app.MapGet("/health", () => TypedResults.Ok(new { status = "healthy" }))
    .ExcludeFromDescription();
