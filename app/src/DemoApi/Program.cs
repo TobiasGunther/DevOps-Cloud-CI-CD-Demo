@@ -41,6 +41,16 @@ app.MapGet("/api/info", (IConfiguration configuration, IHostEnvironment environm
       + "Refresh this after a deploy to see the commit change.")
    .Produces<AppInfo>();
 
+app.MapGet("/api/deployment/access", () => TypedResults.Ok(PipelineAccess.All))
+   .WithName("GetPipelineAccessMethods")
+   .WithTags("Deployment")
+   .WithSummary("Three ways a pipeline can be allowed to deploy")
+   .WithDescription(
+        "Each judged by the three questions from the lecture: how long is it valid, how much does it "
+      + "grant, and can you see in the log who used it. The answers should be minutes, as little as "
+      + "possible, and yes.")
+   .Produces<IReadOnlyList<AccessMethod>>();
+
 app.MapGet("/api/greet/{name}", Results<Ok<Greeting>, BadRequest<string>> (string name, string? language) =>
         GreetingService.TryCreate(name, language, out var greeting, out var error)
             ? TypedResults.Ok(greeting)
