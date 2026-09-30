@@ -114,7 +114,7 @@ PowerShell:
 ./scripts/bootstrap-azure.ps1
 ```
 
-It creates the `id-devops-demo-iac` identity inside the group, two federated credentials,
+It creates the `id-devops-demo-iac` identity inside the group, one federated credential (for `main` only),
 and two role assignments **on the group**. It prints the three values you need next and
 asks for confirmation before changing anything.
 

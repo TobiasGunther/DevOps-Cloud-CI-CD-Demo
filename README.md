@@ -40,7 +40,7 @@ dotnet run --project src/DemoApi              # then open /swagger
 | Workflow | Trigger | Authentication | Point being made |
 | --- | --- | --- | --- |
 | `ci.yml` | pull request, push to main | none needed | A red test blocks the merge |
-| `infra-deploy.yml` | `infra/**` changes, manual | federated identity | Infrastructure is code; pull requests preview it with what-if |
+| `infra-deploy.yml` | `infra/**` changes, manual | federated identity | Infrastructure is code; applied only from `main` |
 | `app-deploy-publish-profile.yml` | manual | **stored secret** | The key under the mat |
 | `app-deploy-oidc.yml` | push to main, manual | **federated identity** | Same result, no secret |
 | `keep-warm.yml` | schedule | none | Free tier insurance, not a teaching point |

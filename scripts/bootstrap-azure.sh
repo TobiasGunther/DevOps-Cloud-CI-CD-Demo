@@ -16,7 +16,7 @@
 #
 # What it creates, all inside that group:
 #   1. A user-assigned managed identity  (NOT an Entra app registration - see below)
-#   2. Two federated credentials: one for main, one for pull requests
+#   2. One federated credential, trusting the main branch and nothing else
 #   3. Two role assignments, scoped to the group and nothing wider
 #
 # Why a managed identity rather than an app registration:
@@ -207,14 +207,12 @@ else
   echo "      gh api repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/oidc/customization/sub --jq .sub_claim_prefix"
 fi
 
+# Exactly one trusted subject: the deploy branch. Deliberately no pull_request
+# credential. A pull request runs the workflow file from its own branch, so trusting
+# pull requests would let any branch rewrite what the job does with this identity -
+# which holds Contributor and Role Based Access Control Administrator.
 add_credential "github-${GITHUB_BRANCH}" \
   "${SUBJECT_PREFIX}:ref:refs/heads/${GITHUB_BRANCH}"
-
-# Lets pull requests preview infrastructure changes with what-if. Pull requests from
-# forks cannot use it: GitHub withholds id-token: write from them, so they never get
-# a token to present in the first place.
-add_credential "github-pull-request" \
-  "${SUBJECT_PREFIX}:pull_request"
 
 # ---- 3. role assignments, scoped to the group -------------------------------
 # Contributor alone is NOT enough: its notActions exclude Microsoft.Authorization/*/Write,
