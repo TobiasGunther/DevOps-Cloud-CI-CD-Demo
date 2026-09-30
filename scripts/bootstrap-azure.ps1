@@ -208,14 +208,12 @@ else {
     Write-Host "      gh api repos/$GithubOwner/$GithubRepo/actions/oidc/customization/sub --jq .sub_claim_prefix"
 }
 
+# Exactly one trusted subject: the deploy branch. Deliberately no pull_request
+# credential. A pull request runs the workflow file from its own branch, so trusting
+# pull requests would let any branch rewrite what the job does with this identity -
+# which holds Contributor and Role Based Access Control Administrator.
 Add-FederatedCredential -Name "github-$GithubBranch" `
     -Subject "${subjectPrefix}:ref:refs/heads/$GithubBranch"
-
-# Lets pull requests preview infrastructure changes with what-if. Pull requests from
-# forks cannot use it: GitHub withholds id-token: write from them, so they never get
-# a token to present in the first place.
-Add-FederatedCredential -Name 'github-pull-request' `
-    -Subject "${subjectPrefix}:pull_request"
 
 # Contributor alone is NOT enough: its notActions exclude Microsoft.Authorization/*/Write,
 # so it cannot create the role assignment that main.bicep makes for the app-deploy

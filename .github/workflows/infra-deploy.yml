@@ -9,7 +9,10 @@
 # that same resource group. Two pipelines, two identities, very different power,
 # and nothing subscription-wide anywhere.
 #
-# On a pull request it only runs what-if: you see the diff before anyone approves it.
+# Only main can reach Azure. The identity trusts exactly one subject,
+# ref:refs/heads/main, so a run from any other branch - or from a pull request - is
+# refused a token. Pull requests still get a compile check of the Bicep, which needs
+# no Azure access at all.
 # Setup: docs/00-azure-setup.md
 # ---------------------------------------------------------------------------
 name: Infra - deploy to Azure
@@ -33,7 +36,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # Required to request the OIDC token. Without it, azure/login cannot work.
 
 env:
   # The resource group is a prerequisite created once by hand, not by this pipeline:
@@ -43,40 +45,28 @@ env:
 
 jobs:
   validate:
-    name: What-if (preview changes)
+    name: Compile the Bicep
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Deliberately no Azure sign-in. A pull request runs the workflow file from its own
+    # branch, so anything it can authenticate as, a branch can misuse. Compiling the
+    # templates catches the common mistakes and needs no access at all.
     steps:
       - uses: actions/checkout@v7
 
-      - name: Sign in to Azure with a short-lived token
-        uses: azure/login@v3
-        with:
-          client-id: ${{ vars.AZURE_IAC_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Lint the Bicep
-        run: az bicep build --file infra/main.bicep --stdout > /dev/null
-
-      - name: Show what would change
+      - name: Compile the templates and parameters
         run: |
-          az deployment group what-if \
-            --resource-group "$RESOURCE_GROUP" \
-            --parameters "$PARAM_FILE" \
-            --name "whatif-${{ github.run_id }}" \
-            | tee whatif.txt
-          {
-            echo '## Infrastructure what-if'
-            echo '```'
-            cat whatif.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep build-params --file "$PARAM_FILE" --stdout > /dev/null
+          echo "Bicep compiles. Changes are applied only after merge, from main." >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     name: Deploy infrastructure
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Only this job may request an OIDC token, and Azure accepts it only from main.
     steps:
       - uses: actions/checkout@v7
 
