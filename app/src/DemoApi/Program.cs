@@ -1,7 +1,18 @@
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 using DemoApi.Features;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Requests, dependencies, logs and exceptions to Application Insights. The connection
+// string is set by the infrastructure as an App Service setting; a connection string on
+// its own sends nothing, something in the app has to pick it up. Locally and in the
+// tests there is none, and the exporter refuses to start without one, so only wire it
+// up when the platform has provided it.
+if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+{
+    builder.Services.AddOpenTelemetry().UseAzureMonitor();
+}
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
