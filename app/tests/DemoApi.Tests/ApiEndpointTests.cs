@@ -16,6 +16,7 @@ public class ApiEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
     public ApiEndpointTests(WebApplicationFactory<Program> factory) => _client = factory.CreateClient();
 
+    // Demo endring
     [Fact]
     public async Task Health_reports_healthy()
     {

@@ -16,7 +16,7 @@ public static class GreetingService
 
     private static readonly Dictionary<string, string> Templates = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["nb"] = "Hei, {0}!",
+        ["nb"] = "Hei {0}!",
         ["en"] = "Hello, {0}!",
         ["de"] = "Hallo, {0}!",
     };
